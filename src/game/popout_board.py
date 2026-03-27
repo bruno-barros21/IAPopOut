@@ -10,8 +10,8 @@ Special rules
                        player who popped wins.
 2. Full-board draw   : When the board is full the current player may declare
                        a draw instead of popping.
-3. Repetition draw   : If the same board state occurs three times, either
-                       player may declare a draw.
+3. Repetition draw   : If 6 consecutive moves revisit previously-seen board
+                       states (no new positions), an arbiter declares a draw.
 
 Move encoding
 -------------
@@ -42,7 +42,8 @@ class PopOutBoard:
         # 0     → draw
         # 1 / 2 → winner
         self.winner: int | None = None
-        self._state_history: dict[bytes, int] = {}
+        self._seen_states: set[bytes] = set()        # all states ever seen
+        self._consecutive_repeats: int = 0           # moves revisiting old states
         self._record_state()
 
     # ── Copying ───────────────────────────────────────────────────────────────
@@ -54,17 +55,24 @@ class PopOutBoard:
         clone.current_player = self.current_player
         clone.is_game_over = self.is_game_over
         clone.winner = self.winner
-        clone._state_history = self._state_history.copy()
+        clone._seen_states = self._seen_states.copy()
+        clone._consecutive_repeats = self._consecutive_repeats
         return clone
 
     # ── State history ─────────────────────────────────────────────────────────
 
     def _record_state(self) -> None:
+        """Record the current board state. Track consecutive repeated states."""
         key = self.board.tobytes()
-        self._state_history[key] = self._state_history.get(key, 0) + 1
+        if key in self._seen_states:
+            self._consecutive_repeats += 1
+        else:
+            self._seen_states.add(key)
+            self._consecutive_repeats = 0
 
-    def _state_repeated(self) -> bool:
-        return self._state_history.get(self.board.tobytes(), 0) >= 3
+    def _arbiter_draw(self) -> bool:
+        """True if 6 consecutive moves revisited already-seen states."""
+        return self._consecutive_repeats >= 6
 
     # ── Legal moves ───────────────────────────────────────────────────────────
 
@@ -83,7 +91,7 @@ class PopOutBoard:
             if self.board[self.ROWS - 1, col] == self.current_player:
                 moves.append(('pop', col))
 
-        if board_full or self._state_repeated():
+        if board_full:
             moves.append(('draw', None))
 
         return moves
@@ -111,6 +119,10 @@ class PopOutBoard:
         if not self.is_game_over:
             self.current_player = 3 - self.current_player  # 1→2, 2→1
             self._record_state()
+            # Rule 3: arbiter declares draw after 6 consecutive repeated states
+            if self._arbiter_draw():
+                self.is_game_over = True
+                self.winner = 0
 
     def _drop(self, col: int) -> None:
         for row in range(self.ROWS - 1, -1, -1):
