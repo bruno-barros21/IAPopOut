@@ -47,7 +47,7 @@ RolloutStrategy = Literal['random', 'heuristic']
 
 class MCTSNode:
     """A single node in the MCTS search tree."""
-
+    # O que cada no guarda
     __slots__ = (
         'board', 'parent', 'move',
         'children', 'untried_moves',
@@ -66,7 +66,7 @@ class MCTSNode:
         self.children: list[MCTSNode] = []
         self.untried_moves: list[tuple] = board.get_legal_moves()
         self.N: int = 0             # visit count
-        self.Q: float = 0.0         # total reward (root player's perspective)
+        self.Q: float = 0.0         # total reward (from this node's active player perspective)
 
     # ── Properties ────────────────────────────────────────────────────────────
 
@@ -145,12 +145,24 @@ def _rollout_heuristic(board: PopOutBoard) -> int | None:
                 chosen = move
                 break
 
-        # 2. Block opponent win
+       # 2. Block: avoid leaving opponent a winning reply
         if chosen is None:
             for move in candidates:
                 tmp = sim.copy()
                 tmp.apply_move(move)
-                if tmp.winner == opponent:
+                if tmp.is_game_over:
+                    continue
+                # Check if opponent can win on their next move
+                opp_can_win = False
+                for opp_move in tmp.get_legal_moves():
+                    if opp_move[0] == 'draw':
+                        continue
+                    tmp2 = tmp.copy()
+                    tmp2.apply_move(opp_move)
+                    if tmp2.winner == opponent:
+                        opp_can_win = True
+                        break
+                if not opp_can_win:
                     chosen = move
                     break
 
@@ -199,7 +211,6 @@ def mcts_search(
     (best_move, root_node)
     """
     rollout_fn = _ROLLOUT_FN[rollout_strategy]
-    root_player = board.current_player
     root = MCTSNode(board.copy())
 
     for _ in range(iterations):
@@ -230,11 +241,13 @@ def mcts_search(
         current = node
         while current is not None:
             current.N += 1
-            if result == root_player:
+            # Q is from the perspective of the player WHO IS ABOUT TO MOVE at this node
+            node_player = current.board.current_player
+            if result == node_player:
                 current.Q += 1.0
-            elif result == 0:       # draw
+            elif result == 0 or result is None:
                 current.Q += 0.5
-            # loss → +0
+            # else: opponent won → +0
             current = current.parent
 
     if not root.children:
