@@ -18,7 +18,10 @@ Move → integer label
 
 from __future__ import annotations
 
+import csv
+import os
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -124,4 +127,72 @@ def generate_dataset(
         print(f'  Done. {len(X)} samples from {n_games} games '
               f'in {time.time() - t0:.1f}s')
 
+    return X, y
+
+
+# ── Persistent storage ────────────────────────────────────────────────────────
+
+# Repo-level data/ directory (works regardless of working directory)
+DATA_DIR: Path = Path(__file__).resolve().parents[2] / 'data'
+
+POPOUT_DATASET_PATH: Path = DATA_DIR / 'popout_mcts.csv'
+IRIS_DATASET_PATH:   Path = DATA_DIR / 'iris.csv'
+
+
+def save_dataset(
+    X: list[list[int]],
+    y: list[int],
+    path: str | Path | None = None,
+) -> None:
+    """Save a (X, y) dataset to a CSV file.
+
+    Parameters
+    ----------
+    X : list of feature vectors
+    y : list of labels
+    path : output CSV path (default: ``data/popout_mcts.csv``)
+    """
+    path = Path(path) if path else POPOUT_DATASET_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    header = FEATURE_NAMES + ['label']
+
+    with open(path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        for features, label in zip(X, y):
+            writer.writerow(features + [label])
+
+    print(f'Saved {len(X)} samples → {path}')
+
+
+def load_dataset(
+    path: str | Path | None = None,
+) -> tuple[list[list[int]], list[int]]:
+    """Load a (X, y) dataset from a CSV file.
+
+    Parameters
+    ----------
+    path : input CSV path (default: ``data/popout_mcts.csv``)
+
+    Returns
+    -------
+    (X, y)
+        X — list of 43-element integer feature vectors
+        y — list of integer labels (0–14)
+    """
+    path = Path(path) if path else POPOUT_DATASET_PATH
+
+    X: list[list[int]] = []
+    y: list[int] = []
+
+    with open(path, 'r') as f:
+        reader = csv.reader(f)
+        next(reader)  # skip header
+        for row in reader:
+            values = list(map(int, row))
+            X.append(values[:-1])
+            y.append(values[-1])
+
+    print(f'Loaded {len(X)} samples ← {path}')
     return X, y
