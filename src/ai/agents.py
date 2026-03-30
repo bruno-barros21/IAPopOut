@@ -81,7 +81,7 @@ def make_mcts_agent(
         raise ValueError(f"c must be >= 0, got {c}")
     if expand_k < 1:
         raise ValueError(f"expand_k must be >= 1, got {expand_k}")
-    if rollout_strategy not in ('random', 'heuristic'):
+    if rollout_strategy not in ('random', 'heuristic', 'greedy'):
         raise ValueError(f"Unknown rollout strategy: {rollout_strategy!r}")
 
     def agent(board: PopOutBoard) -> tuple:

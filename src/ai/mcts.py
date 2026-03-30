@@ -49,7 +49,7 @@ from typing import Literal
 from src.game.popout_board import PopOutBoard
 
 
-RolloutStrategy = Literal['random', 'heuristic']
+RolloutStrategy = Literal['random', 'heuristic', 'greedy']
 
 
 # ── Tree node ─────────────────────────────────────────────────────────────────
@@ -187,9 +187,81 @@ def _rollout_heuristic(board: PopOutBoard) -> int | None:
     return sim.winner
 
 
+def _rollout_greedy(board: PopOutBoard) -> int | None:
+    """Play using a greedy one-ply heuristic with positional scoring.
+
+    Priority:
+    1. Take an immediate winning move.
+    2. Block an immediate opponent winning move (one-ply threat check
+       on the current board).
+    3. Pick the move with the highest positional score (center column
+       preference, drops favoured over pops).
+
+    Compared to ``heuristic``, this is faster because the blocking
+    check examines opponent threats on the *current* board (one-ply)
+    rather than checking opponent responses *after* each candidate
+    move (two-ply).  The positional scoring adds domain knowledge
+    without the cost of deeper search.
+    """
+    # Positional value per column: center columns create more connections
+    _COL_VALUE = [0, 1, 2, 3, 2, 1, 0]
+
+    sim = board.copy()
+    while not sim.is_game_over:
+        moves = sim.get_legal_moves()
+        if not moves:
+            break
+
+        player   = sim.current_player
+        opponent = 3 - player
+        chosen   = None
+
+        non_draw   = [m for m in moves if m[0] != 'draw']
+        candidates = non_draw if non_draw else moves
+
+        # 1. Immediate win
+        for move in candidates:
+            tmp = sim.copy()
+            tmp.apply_move(move)
+            if tmp.winner == player:
+                chosen = move
+                break
+
+        # 2. Block: find opponent's immediate winning threats
+        #    Temporarily give the opponent the turn and check which
+        #    moves would let them win right now.  If we share a legal
+        #    move with that threat (e.g. drop in the same column), block.
+        if chosen is None:
+            tmp_opp = sim.copy()
+            tmp_opp.current_player = opponent
+            for opp_move in tmp_opp.get_legal_moves():
+                if opp_move[0] == 'draw':
+                    continue
+                tmp2 = tmp_opp.copy()
+                tmp2.apply_move(opp_move)
+                if tmp2.winner == opponent and opp_move in candidates:
+                    chosen = opp_move
+                    break
+
+        # 3. Positional scoring: prefer center columns + drops over pops
+        if chosen is None:
+            def _score(m: tuple) -> int:
+                move_type, col = m
+                s = _COL_VALUE[col]
+                if move_type == 'drop':
+                    s += 4   # drops build connections more reliably
+                return s
+            chosen = max(candidates, key=_score)
+
+        sim.apply_move(chosen)
+
+    return sim.winner
+
+
 _ROLLOUT_FN = {
     'random':    _rollout_random,
     'heuristic': _rollout_heuristic,
+    'greedy':    _rollout_greedy,
 }
 
 
@@ -220,7 +292,8 @@ def mcts_search(
         k=1 is standard MCTS; k>1 trades depth for breadth.
     rollout_strategy:
         ``'random'``    — uniform random rollouts.
-        ``'heuristic'`` — one-ply look-ahead during rollout.
+        ``'greedy'``    — one-ply win/block + positional scoring.
+        ``'heuristic'`` — two-ply look-ahead during rollout.
     max_time:
         Optional wall-clock time limit in seconds.  The search stops when
         either *iterations* or *max_time* is reached (whichever first).
