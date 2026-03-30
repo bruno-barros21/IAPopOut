@@ -29,12 +29,21 @@ UCT formula
 
 The final move is chosen by **robust selection**: the child with the highest
 visit count N (most reliable estimate, robust to lucky outliers).
+
+Extensions beyond standard MCTS
+--------------------------------
+- **Early termination** — stop iterating when the best child reaches a
+  dominant win rate (configurable threshold), saving computation without
+  sacrificing move quality.
+- **Time-limited search** — optional wall-clock time limit as an alternative
+  (or complement) to a fixed iteration budget.
 """
 
 from __future__ import annotations
 
 import math
 import random
+import time as _time
 from typing import Literal
 
 from src.game.popout_board import PopOutBoard
@@ -47,7 +56,7 @@ RolloutStrategy = Literal['random', 'heuristic']
 
 class MCTSNode:
     """A single node in the MCTS search tree."""
-    # O que cada no guarda
+    # Per-node fields
     __slots__ = (
         'board', 'parent', 'move',
         'children', 'untried_moves',
@@ -101,6 +110,10 @@ class MCTSNode:
     def win_rate(self) -> float:
         return self.Q / self.N if self.N else 0.0
 
+    def __repr__(self) -> str:
+        return (f"MCTSNode(move={self.move}, N={self.N}, "
+                f"Q={self.Q:.1f}, wr={self.win_rate:.3f})")
+
 
 # ── Rollout strategies ────────────────────────────────────────────────────────
 
@@ -145,7 +158,7 @@ def _rollout_heuristic(board: PopOutBoard) -> int | None:
                 chosen = move
                 break
 
-       # 2. Block: avoid leaving opponent a winning reply
+        # 2. Block: avoid leaving opponent a winning reply
         if chosen is None:
             for move in candidates:
                 tmp = sim.copy()
@@ -188,6 +201,9 @@ def mcts_search(
     c: float = math.sqrt(2),
     expand_k: int = 1,
     rollout_strategy: RolloutStrategy = 'random',
+    max_time: float | None = None,
+    early_stop_threshold: float = 1.0,
+    early_stop_min_visits: int = 50,
 ) -> tuple[tuple, MCTSNode]:
     """Run MCTS and return the best move together with the search tree root.
 
@@ -196,7 +212,7 @@ def mcts_search(
     board:
         Current game state. Not modified.
     iterations:
-        Number of MCTS iterations (more = stronger, slower).
+        Maximum number of MCTS iterations (more = stronger, slower).
     c:
         UCT exploration constant. The theoretical optimum is √2.
     expand_k:
@@ -205,6 +221,17 @@ def mcts_search(
     rollout_strategy:
         ``'random'``    — uniform random rollouts.
         ``'heuristic'`` — one-ply look-ahead during rollout.
+    max_time:
+        Optional wall-clock time limit in seconds.  The search stops when
+        either *iterations* or *max_time* is reached (whichever first).
+        ``None`` means no time limit.
+    early_stop_threshold:
+        Win-rate threshold for early termination (0.0–1.0).  If the best
+        child reaches this win rate with at least *early_stop_min_visits*,
+        the search stops early.  Default ``1.0`` disables early stopping.
+    early_stop_min_visits:
+        Minimum visit count before early stopping can trigger (prevents
+        premature decisions based on noisy estimates).
 
     Returns
     -------
@@ -212,15 +239,20 @@ def mcts_search(
     """
     rollout_fn = _ROLLOUT_FN[rollout_strategy]
     root = MCTSNode(board.copy())
+    start = _time.monotonic()
 
-    for _ in range(iterations):
+    for i in range(iterations):
         node = root
 
-        # ── 1. Selection ──────────────────────────────────────────────────────
+        # ── 1. Selection ──────────────────────────────────────────────────
+        # Each child stores Q from its OWN current_player's perspective.
+        # Since child.current_player == opponent(node.current_player),
+        # selecting max UCT naturally maximises wins for the selecting
+        # player (adversarial inversion).
         while node.is_fully_expanded and not node.is_terminal:
             node = node.best_uct_child(c)
 
-        # ── 2. Expansion ──────────────────────────────────────────────────────
+        # ── 2. Expansion ─────────────────────────────────────────────────
         if not node.is_terminal and node.untried_moves:
             k = min(expand_k, len(node.untried_moves))
             for _ in range(k):
@@ -232,23 +264,44 @@ def mcts_search(
                 child_board.apply_move(move)
                 child = MCTSNode(child_board, parent=node, move=move)
                 node.children.append(child)
+            # Rollout from the last expanded child.  The other k-1 children
+            # (with N=0 → UCT=∞) will be prioritised by UCT selection in
+            # subsequent iterations.
             node = node.children[-1]
 
-        # ── 3. Simulation ─────────────────────────────────────────────────────
+        # ── 3. Simulation ────────────────────────────────────────────────
         result = rollout_fn(node.board)
 
-        # ── 4. Backpropagation ────────────────────────────────────────────────
+        # ── 4. Backpropagation ───────────────────────────────────────────
+        # Q at each node is stored from the perspective of the player
+        # WHO IS ABOUT TO MOVE at that node:
+        #   result == node.current_player  →  +1.0  (win)
+        #   result == 0 or None            →  +0.5  (draw)
+        #   otherwise                      →  +0.0  (loss)
         current = node
         while current is not None:
             current.N += 1
-            # Q is from the perspective of the player WHO IS ABOUT TO MOVE at this node
             node_player = current.board.current_player
             if result == node_player:
                 current.Q += 1.0
             elif result == 0 or result is None:
                 current.Q += 0.5
-            # else: opponent won → +0
             current = current.parent
+
+        # ── 5. Early stopping ────────────────────────────────────────────
+        # If the most-visited child already has a dominant win rate,
+        # additional iterations are unlikely to change the decision.
+        if (early_stop_threshold < 1.0
+                and root.children
+                and i >= max(iterations // 4, 30)):
+            best = root.best_robust_child()
+            if (best.N >= early_stop_min_visits
+                    and best.win_rate >= early_stop_threshold):
+                break
+
+        # ── Time limit ───────────────────────────────────────────────────
+        if max_time is not None and (_time.monotonic() - start) >= max_time:
+            break
 
     if not root.children:
         fallback = board.get_legal_moves()

@@ -45,25 +45,45 @@ def make_mcts_agent(
     c: float = math.sqrt(2),
     expand_k: int = 1,
     rollout_strategy: RolloutStrategy = 'random',
+    max_time: float | None = None,
+    early_stop_threshold: float = 1.0,
 ) -> Agent:
     """Return a MCTS agent callable.
 
     Parameters
     ----------
     iterations:
-        Number of MCTS iterations per move decision.
+        Maximum number of MCTS iterations per move decision.
     c:
-        UCT exploration constant.
+        UCT exploration constant (default √2).
     expand_k:
         Number of children to expand per iteration (1 = standard MCTS).
     rollout_strategy:
         ``'random'`` or ``'heuristic'``.
+    max_time:
+        Optional per-move wall-clock time limit in seconds.
+    early_stop_threshold:
+        Win-rate threshold (0–1) for early termination. ``1.0`` disables it.
 
     Returns
     -------
     agent : callable
         A function ``agent(board) -> move``.
+
+    Raises
+    ------
+    ValueError
+        If any parameter is outside its valid range.
     """
+    if iterations < 1:
+        raise ValueError(f"iterations must be >= 1, got {iterations}")
+    if c < 0:
+        raise ValueError(f"c must be >= 0, got {c}")
+    if expand_k < 1:
+        raise ValueError(f"expand_k must be >= 1, got {expand_k}")
+    if rollout_strategy not in ('random', 'heuristic'):
+        raise ValueError(f"Unknown rollout strategy: {rollout_strategy!r}")
+
     def agent(board: PopOutBoard) -> tuple:
         move, _ = mcts_search(
             board,
@@ -71,6 +91,8 @@ def make_mcts_agent(
             c=c,
             expand_k=expand_k,
             rollout_strategy=rollout_strategy,
+            max_time=max_time,
+            early_stop_threshold=early_stop_threshold,
         )
         return move
 
