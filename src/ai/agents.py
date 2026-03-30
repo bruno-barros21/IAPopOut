@@ -59,7 +59,7 @@ def make_mcts_agent(
     expand_k:
         Number of children to expand per iteration (1 = standard MCTS).
     rollout_strategy:
-        ``'random'`` or ``'heuristic'``.
+        ``'random'``, ``'greedy'``, or ``'heuristic'``.
     max_time:
         Optional per-move wall-clock time limit in seconds.
     early_stop_threshold:
