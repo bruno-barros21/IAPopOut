@@ -163,7 +163,7 @@ def save_dataset(
         for features, label in zip(X, y):
             writer.writerow(features + [label])
 
-    print(f'Saved {len(X)} samples → {path}')
+    print(f'Saved {len(X)} samples -> {path}')
 
 
 def load_dataset(

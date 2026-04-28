@@ -350,7 +350,7 @@ class DecisionTreeID3:
             return
 
         if node.is_leaf:
-            print(f'{pad}→ {node.label}')
+            print(f'{pad}-> {node.label}')
             return
 
         if node.is_continuous:
