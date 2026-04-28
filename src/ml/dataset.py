@@ -194,5 +194,5 @@ def load_dataset(
             X.append(values[:-1])
             y.append(values[-1])
 
-    print(f'Loaded {len(X)} samples ← {path}')
+    print(f'Loaded {len(X)} samples <- {path}')
     return X, y
