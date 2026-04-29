@@ -157,17 +157,28 @@ class PopOutGameUI:
             player = self.board.current_player
             self._render()
             self._show_thinking(player)
-            # Run in thread to keep UI responsive
-            threading.Thread(target=self._computer_turn, daemon=True).start()
+            
+            # Execute synchronously. VS Code handles synchronous updates perfectly.
+            # It will block the kernel while thinking, but guarantees the UI updates.
+            self._computer_turn()
 
     def _computer_turn(self) -> None:
-        """Compute and apply a computer move (runs in a background thread)."""
-        player = self.board.current_player
-        agent = self.agents[player]
-        move = agent(self.board)
-        time.sleep(self.move_delay)  # brief pause so user sees "thinking"
-        self._apply_move(move, player)
-        self._advance()
+        """Compute and apply a computer move (synchronously)."""
+        try:
+            player = self.board.current_player
+            agent = self.agents[player]
+            
+            move = agent(self.board)
+            
+            self._apply_move(move, player)
+            self._advance()
+        except Exception as e:
+            import traceback
+            with self.controls_output:
+                from IPython.display import clear_output
+                clear_output()
+                print(f"Error during computer turn: {e}")
+                print(traceback.format_exc())
 
     # ── Move application ──────────────────────────────────────────────────
 
