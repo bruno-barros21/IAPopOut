@@ -347,18 +347,21 @@ def mcts_search(
 
         # ── 4. Backpropagation ───────────────────────────────────────────
         # Q at each node is stored from the perspective of the player
-        # WHO IS ABOUT TO MOVE at that node:
-        #   result == node.current_player  →  +1.0  (win)
-        #   result == 0 or None            →  +0.5  (draw)
-        #   otherwise                      →  +0.0  (loss)
+        # WHO MADE THE MOVE to reach that node (i.e., the parent's player).
+        # This ensures that when a parent calls max() to select the best child,
+        # it is maximizing its own win rate.
+        #   result == parent.current_player →  +1.0  (win)
+        #   result == 0 or None             →  +0.5  (draw)
+        #   otherwise                       →  +0.0  (loss)
         current = node
         while current is not None:
             current.N += 1
-            node_player = current.board.current_player
-            if result == node_player:
-                current.Q += 1.0
-            elif result == 0 or result is None:
-                current.Q += 0.5
+            if current.parent is not None:
+                player_who_moved = current.parent.board.current_player
+                if result == player_who_moved:
+                    current.Q += 1.0
+                elif result == 0 or result is None:
+                    current.Q += 0.5
             current = current.parent
 
         # ── 5. Early stopping ────────────────────────────────────────────
