@@ -104,9 +104,46 @@ def make_mcts_agent(
 
 # ── Decision Tree agent factory ───────────────────────────────────────────────
 
+def _one_ply_override(board: PopOutBoard) -> tuple | None:
+    """Return an immediate win or block move if one exists, else None.
+
+    This compensates for the ID3 tree's inability to generalise spatial
+    threat patterns from raw cell features.  The check is a simple one-ply
+    scan and adds negligible overhead.
+    """
+    moves = board.get_legal_moves()
+    non_draw = [m for m in moves if m[0] != 'draw']
+    player   = board.current_player
+    opponent = 3 - player
+
+    # 1. Take an immediate win
+    for move in non_draw:
+        tmp = board.copy()
+        tmp.apply_move(move)
+        if tmp.winner == player:
+            return move
+
+    # 2. Block an immediate opponent win.
+    # Correct approach: find which moves the opponent would WIN with RIGHT NOW
+    # (by temporarily giving them the turn), then play that exact same move
+    # ourselves to block it.
+    opp_board = board.copy()
+    opp_board.current_player = opponent
+    opp_candidates = [m for m in opp_board.get_legal_moves() if m[0] != 'draw']
+
+    for opp_move in opp_candidates:
+        tmp = opp_board.copy()
+        tmp.apply_move(opp_move)
+        if tmp.winner == opponent and opp_move in non_draw:
+            return opp_move  # block by occupying that same cell
+
+    return None  # no immediate threat; let the DT decide
+
+
 def make_dt_agent(
     dt_model: "DecisionTreeID3",
     fallback: Agent | None = None,
+    use_heuristic_override: bool = True,
 ) -> Agent:
     """Wrap a trained :class:`~src.ml.decision_tree.DecisionTreeID3` as an agent.
 
@@ -121,6 +158,12 @@ def make_dt_agent(
     fallback:
         Agent used when the DT predicts an illegal move.
         Defaults to :func:`random_agent`.
+    use_heuristic_override:
+        If ``True`` (default), apply a one-ply win/block check *before*
+        asking the tree.  This compensates for the fact that raw cell
+        features cannot encode spatial threat patterns, so the pure DT
+        frequently misses obvious mates and fails to block clear threats.
+        Set to ``False`` to evaluate the DT in its raw form.
 
     Returns
     -------
@@ -131,6 +174,12 @@ def make_dt_agent(
     _fallback = fallback if fallback is not None else random_agent
 
     def agent(board: PopOutBoard) -> tuple:
+        # One-ply safety override (win immediately / block immediate threat)
+        if use_heuristic_override:
+            override = _one_ply_override(board)
+            if override is not None:
+                return override
+
         features   = board_to_features(board)
         pred_label = dt_model.predict_one(features)
         pred_move  = label_to_move(pred_label)
@@ -139,5 +188,5 @@ def make_dt_agent(
             return pred_move
         return _fallback(board)
 
-    agent.__name__ = 'DTAgent'
+    agent.__name__ = 'DTAgent(+override)' if use_heuristic_override else 'DTAgent'
     return agent
