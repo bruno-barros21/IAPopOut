@@ -1,4 +1,4 @@
-﻿"""
+"""
 generate_extra_data.py
 ======================
 Generates additional MCTS self-play games and appends them to
@@ -34,15 +34,15 @@ MAIN_CSV          = DATA_DIR / 'popout_mcts.csv'
 TEMP_CSV          = DATA_DIR / 'mcts_dataset_parcial.csv'   # matches Rita's naming
 
 # Time budget per move (seconds) -- mirrors Rita's time_limit logic
-TIME_EARLY_GAME   = 3.0    # moves 1–10: more time for critical opening decisions
-TIME_LATE_GAME    = 1.5    # moves 11+:  faster, position is more deterministic
+TIME_EARLY_GAME   = 5.0    # moves 1–10: more time for critical opening decisions
+TIME_LATE_GAME    = 2.5    # moves 11+:  faster, position is more deterministic
 EARLY_GAME_MOVES  = 10     # threshold between "early" and "late" game
 
 CHECKPOINT_EVERY  = 10     # save partial CSV every N games (matches Rita)
 
 # Strategy batches -- heuristic-heavy per professor guidance
 BATCHES: list[tuple[str, int]] = [
-    ('heuristic', 350),
+    ('heuristic', 300),
     ('greedy',    150),
     ('random',     50),
 ]

@@ -96,6 +96,6 @@ def train_and_save_model(
     print("Success! You can now load this model in IAPopOut.ipynb using 'pickle.load()'.")
 
 if __name__ == '__main__':
-    # A max_depth of 15 is a reasonable starting point to avoid exploding the tree with 11k samples.
-    # The user can adjust this if necessary.
-    train_and_save_model(max_depth=15, test_ratio=0.2)
+    # A max_depth of 8 is used to prevent the severe overfitting we saw earlier (26% test acc),
+    # forcing the tree to learn general rules rather than memorizing board states.
+    train_and_save_model(max_depth=8, test_ratio=0.2)

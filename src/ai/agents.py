@@ -182,6 +182,10 @@ def make_dt_agent(
 
         features   = board_to_features(board)
         pred_label = dt_model.predict_one(features)
+        
+        if pred_label is None:
+            return _fallback(board)
+            
         pred_move  = label_to_move(pred_label)
 
         if pred_move in board.get_legal_moves():
