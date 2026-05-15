@@ -42,8 +42,7 @@ class PopOutBoard:
         # 0     → draw
         # 1 / 2 → winner
         self.winner: int | None = None
-        self._seen_states: set[bytes] = set()        # all states ever seen
-        self._consecutive_repeats: int = 0           # moves revisiting old states
+        self._state_counts: dict[bytes, int] = {}    # counts of specific board states
         self._record_state()
 
     # ── Copying ───────────────────────────────────────────────────────────────
@@ -55,24 +54,20 @@ class PopOutBoard:
         clone.current_player = self.current_player
         clone.is_game_over = self.is_game_over
         clone.winner = self.winner
-        clone._seen_states = self._seen_states.copy()
-        clone._consecutive_repeats = self._consecutive_repeats
+        clone._state_counts = self._state_counts.copy()
         return clone
 
     # ── State history ─────────────────────────────────────────────────────────
 
     def _record_state(self) -> None:
-        """Record the current board state. Track consecutive repeated states."""
+        """Record the current board state and count its occurrences."""
         key = self.board.tobytes()
-        if key in self._seen_states:
-            self._consecutive_repeats += 1
-        else:
-            self._seen_states.add(key)
-            self._consecutive_repeats = 0
+        self._state_counts[key] = self._state_counts.get(key, 0) + 1
 
     def _arbiter_draw(self) -> bool:
-        """True if 6 consecutive moves revisited already-seen states."""
-        return self._consecutive_repeats >= 6
+        """True if the current state has occurred 6 times (mandatory draw)."""
+        key = self.board.tobytes()
+        return self._state_counts.get(key, 0) >= 6
 
     # ── Legal moves ───────────────────────────────────────────────────────────
 
@@ -91,7 +86,10 @@ class PopOutBoard:
             if self.board[self.ROWS - 1, col] == self.current_player:
                 moves.append(('pop', col))
 
-        if board_full:
+        key = self.board.tobytes()
+        state_count = self._state_counts.get(key, 0)
+
+        if board_full or state_count >= 3:
             moves.append(('draw', None))
 
         return moves
@@ -119,7 +117,7 @@ class PopOutBoard:
         if not self.is_game_over:
             self.current_player = 3 - self.current_player  # 1→2, 2→1
             self._record_state()
-            # Rule 3: arbiter declares draw after 6 consecutive repeated states
+            # Rule 3: arbiter declares draw after 6 identical repeated states
             if self._arbiter_draw():
                 self.is_game_over = True
                 self.winner = 0
