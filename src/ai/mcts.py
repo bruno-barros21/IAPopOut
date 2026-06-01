@@ -309,7 +309,7 @@ _ROLLOUT_FN = {
 
 def mcts_search(
     board: PopOutBoard,
-    iterations: int = 1000,
+    iterations: int = 10000,
     c: float = math.sqrt(2),
     expand_k: int = 1,
     rollout_strategy: RolloutStrategy = 'random',
